@@ -1,11 +1,11 @@
-const book = [
+let book = [
   {
     isbn: "11book",
     title: "rich dad and poor dad",
     pubdate: "1997",
     language: "english",
     numpage: "250",
-    author: ["Robert"],
+    author: [1, 2],
     category: ["biopic", "novel"],
     publication: [1, 2],
   },
@@ -15,7 +15,7 @@ const author = [
   {
     id: 1,
     name: "robert",
-    books: ["rich dad poor dad", "atomic habits"],
+    books: ["11book", "12book"],
   },
 ];
 

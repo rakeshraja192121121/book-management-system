@@ -100,6 +100,66 @@ booky.put("/publication/update/book/:isbn", (req, res) => {
   });
 });
 
+// deleting the book
+
+booky.delete("/book/delete/:isbn", (req, res) => {
+  const updatedbooks = database.book.filter((bookitem) => {
+    bookitem.isbn !== req.params.isbn;
+  });
+  database.book = updatedbooks;
+  return res.json({ book: database.book });
+});
+
+//deleting a author
+
+booky.delete("/delete/author/:isbn/:authorid", (req, res) => {
+  database.book.forEach((bookitem) => {
+    if (bookitem.isbn === req.params.isbn) {
+      const newAuthor = bookitem.author.filter(
+        (authoritem) => authoritem !== parseInt(req.params.authorid)
+      );
+      bookitem.author = newAuthor;
+    }
+  });
+
+  database.author.forEach((authoritem) => {
+    if (authoritem.id === parseInt(req.params.authorid)) {
+      const newbooklist = authoritem.books.filter(
+        (book) => book !== req.params.isbn
+      );
+      authoritem.books = newbooklist;
+    }
+  });
+  return res.json({
+    book: database.book,
+    author: database.author,
+    msg: "deleted ",
+  });
+});
+
+// deleting a publication
+
+booky.delete("/delete/publication/:isbn/:pubid", (req, res) => {
+  database.book.forEach((bookitem) => {
+    if (bookitem.isbn === req.params.isbn) {
+      bookitem.publication = 0;
+    }
+  });
+
+  database.publication.forEach((pubitem) => {
+    if (pubitem.id === parseInt(req.params.pubid)) {
+      newbooks = pubitem.books.filter((book) => book !== req.params.isbn);
+    }
+    pubitem.books = newbooks;
+  });
+
+  return res.json({
+    book: database.book,
+    publication: database.publication,
+    msg: "deleted",
+  });
+});
+
 booky.listen(3000, () => {
   console.log("the server has started");
 });
