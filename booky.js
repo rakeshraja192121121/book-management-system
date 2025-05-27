@@ -13,6 +13,14 @@ mongoose
 
 const database = require("./database");
 
+//importing models
+
+const BookModel = require("./bookdata.js");
+
+const AuthorModel = require("./authordata.js");
+
+const PubModel = require("./publication.js");
+
 booky.get("/book", (req, res) => {
   res.json({ data: database.book });
 });
