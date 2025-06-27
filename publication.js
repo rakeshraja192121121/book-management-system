@@ -11,4 +11,4 @@ const PubModel = mongoose.model("publications", PubSchema);
 
 //export
 
-module.exports = pubModel;
+module.exports = PubModel;

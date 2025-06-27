@@ -1,3 +1,4 @@
+require("express-async-handler");
 require("dotenv").config();
 
 const express = require("express");
@@ -12,6 +13,8 @@ mongoose
   .then(() => console.log("connection established !!!"));
 
 const database = require("./database");
+const openAi = require("./openAi");
+const errorHandler = require("./middleware/errorHandler.js");
 
 //importing models
 
@@ -21,32 +24,53 @@ const AuthorModel = require("./authordata.js");
 
 const PubModel = require("./publication.js");
 
-booky.get("/book", (req, res) => {
-  res.json({ data: database.book });
+const pipeline = [
+  { $unwind: "$books" },
+
+  { $match: { books: "11book" } },
+  {
+    $group: {
+      _id: "$name",
+      Books: { $sum: 1 },
+    },
+  },
+];
+
+// display all the books :::  route:/book
+
+booky.get("/book", async (req, res) => {
+  const allBookData = await BookModel.find();
+  const result = await AuthorModel.aggregate(pipeline);
+  res.json({
+    allbooks: allBookData,
+    pipeline: result,
+  });
 });
 
-booky.get("/book/sp/:id", (req, res) => {
-  const getspecifiedBook = database.book.filter(
-    (book) => book.isbn === req.params.id
-  );
+// display a specified book :::: route : /book/sp/:isbn
 
-  console.log(getspecifiedBook.length);
-  if (getspecifiedBook.length === 0) {
+booky.get("/book/sp/:isbn", async (req, res) => {
+  const getspecifiedBook = await BookModel.findOne({ isbn: req.params.isbn });
+
+  if (!getspecifiedBook) {
     return res.json({
-      error: `the requesting isbn number ${req.params.id} is not in the database`,
+      error: `the requesting isbn number ${req.params.isbn} is not in the database`,
     });
   }
 
   return res.json({ data: getspecifiedBook });
 });
 
-booky.get("/book/c/:category", (req, res) => {
-  const getspecifiedBook = database.book.filter((books) =>
-    books.category.includes(req.params.category)
-  );
-  console.log(getspecifiedBook);
+// display the book of a specified catogery, route::/book/c/:category
 
-  if (getspecifiedBook.length === 0) {
+booky.get("/book/c/:category", async (req, res) => {
+  const getspecifiedBook = await BookModel.findOne({
+    category: req.params.category,
+  });
+
+  //const getspecifiedBook = database.book.filter((books) =>
+  //books.category.includes(req.params.category))
+  if (!getspecifiedBook) {
     return res.json({
       error: `the category ${req.params.category} books are not avilable `,
     });
@@ -54,33 +78,112 @@ booky.get("/book/c/:category", (req, res) => {
   return res.json({ data: getspecifiedBook });
 });
 
-booky.get("/author", (req, res) => {
-  return res.json({ data: database.author });
+//display all  author , route:: /author
+
+booky.get("/author", async (req, res) => {
+  const getallAuthor = await AuthorModel.find();
+  const result = await AuthorModel.aggregate(pipeline);
+
+  res.json({ data: getallAuthor, pipeline: result });
 });
 
-booky.post("/book/add", (req, res) => {
-  const newBook = req.body.newBook;
-  database.book.push(newBook);
-  return res.json({ data: database.book });
+// adding the datas to the database , route:/book/add
+
+booky.post("/book/add", async (req, res) => {
+  try {
+    const newBook = req.body.newBook;
+
+    const existingbook = await BookModel.findOne({ isbn: newBook.isbn });
+    if (existingbook) {
+      res.json({ msg: "the book is already in the database" });
+    } else {
+      const addBook = await BookModel.create(newBook);
+
+      //database.book.push(newBook); without database
+      return res.json({ addBook });
+    }
+  } catch (error) {
+    res.json({ msg: "error" });
+  }
 });
 
-booky.post("/author/add", (req, res) => {
-  const newAuthor = req.body.newAuthor;
-  database.author.push(newAuthor);
-  return res.json({ data: database.author });
+//adding author to the database, route::/author/add
+
+booky.post("/author/add", async (req, res) => {
+  try {
+    const newAuthor = req.body.newAuthor;
+
+    const existingAuthor = await AuthorModel.findOne({ id: newAuthor.id });
+
+    if (existingAuthor) {
+      res.json({ msg: "Alredy Exist" });
+    } else {
+      const addingAuthor = await AuthorModel.create(newAuthor);
+
+      res.json("added");
+    }
+  } catch (error) {
+    console.log(error);
+  }
+
+  //database.author.push(newAuthor);
+  //return res.json({ data: database.author });
 });
 
-booky.put("/book/update/title/:isbn", (req, res) => {
-  database.book.forEach((books) => {
+//posting in publication route:: /add/publication
+
+booky.post("/add/publication", async (req, res) => {
+  try {
+    const newPublication = req.body.newPub;
+    const existingPublication = await PubModel.findOne({
+      id: newPublication.id,
+    });
+    if (existingPublication) {
+      res.json({ msg: "alredy exist" });
+    } else {
+      const newpub = await PubModel.create(newPublication);
+      res.json("added");
+    }
+  } catch (error) {
+    console.log(error);
+    res.json({ msg: "error" });
+  }
+});
+
+//updating a book title using isbn , route :: /book/update/title/:isbn
+
+booky.put("/book/update/title/:isbn", async (req, res) => {
+  const updatedTitle = await BookModel.findOneAndUpdate(
+    { isbn: req.params.isbn },
+    { title: req.body.newTitle },
+    { new: true }
+  );
+
+  /*database.book.forEach((books) => {
     if (books.isbn === req.params.isbn) {
       books.title = req.body.newtitle;
       return;
     }
-  });
-  return res.json({ data: database.book });
+  });*/
+  return res.json({ updatedTitle });
 });
 
-booky.put("/book/update/author/:isbn/:author", (req, res) => {
+//updating book in book database and author database., route:::/book/update/author/:isbn/:author
+
+booky.put("/book/update/author/:isbn/:author", async (req, res) => {
+  const updateBook = await BookModel.findOneAndUpdate(
+    { isbn: req.params.isbn },
+    { $addToSet: { author: req.params.author } },
+    { new: true }
+  );
+  const updateAuthor = await AuthorModel.findOneAndUpdate(
+    { id: req.params.author },
+    { $push: { books: req.params.isbn } },
+    { new: true }
+  );
+  res.json({ Bookdata: updateBook, authorData: updateAuthor });
+
+  /*
   database.book.forEach((books) => {
     if (books.isbn === req.params.isbn) {
       return books.author.push(req.params.author);
@@ -92,12 +195,29 @@ booky.put("/book/update/author/:isbn/:author", (req, res) => {
       return authors.books.push(req.params.isbn);
     }
   });
-  return res.json({ book: database.book, author: database.author });
+  return res.json({ book: database.book, author: database.author });*/
 });
 
 //updating publications
 
-booky.put("/publication/update/book/:isbn", (req, res) => {
+// in publicaltion updating book ,route::/publication/update/book/:isbn
+
+booky.put("/publication/update/book/:isbn", async (req, res) => {
+  const updatepub = await PubModel.findOneAndUpdate(
+    { id: req.body.pubid },
+    { $addToSet: { books: req.params.isbn } },
+    { new: true }
+  );
+  const updatebook = await BookModel.findOneAndUpdate(
+    { isbn: req.params.isbn },
+    {
+      publication: req.body.pubid,
+    },
+    {
+      new: true,
+    }
+  );
+  /*
   database.publication.forEach((pubitem) => {
     if (pubitem.id === req.body.pubid) {
       return pubitem.books.push(req.params.isbn);
@@ -108,26 +228,66 @@ booky.put("/publication/update/book/:isbn", (req, res) => {
       bookitem.publication = req.body.pubid;
     }
   });
-  return res.json({
-    book: database.book,
-    publications: database.publication,
-    msg: "sucessfully updated",
-  });
+  */
+  res.json({ updatepub, updatebook });
 });
 
-// deleting the book
+booky.put("/creating/file/put/:id", async (req, res) => {
+  const newAuthor = req.body.newAuthor;
 
-booky.delete("/book/delete/:isbn", (req, res) => {
+  const Id = req.params.id;
+
+  const existingAuthor = await AuthorModel.findOne({ id: newAuthor.id });
+
+  if (existingAuthor) {
+    res.json({ msg: "Alredy Exist" });
+  } else {
+    const addingAuthor = await AuthorModel.create(
+      { id: Id },
+      { newAuthor },
+      { runValidator: true }
+    );
+
+    res.json("added");
+  }
+});
+
+// deleting the book, route:: /book/delete/:isbn
+
+booky.delete("/book/delete/:isbn", async (req, res) => {
+  const deleteBook = await BookModel.findOneAndDelete({
+    isbn: req.params.isbn,
+  });
+  res.json({ msg: "deleted" });
+
+  /*
   const updatedbooks = database.book.filter((bookitem) => {
     bookitem.isbn !== req.params.isbn;
   });
   database.book = updatedbooks;
   return res.json({ book: database.book });
+  */
 });
 
-//deleting a author
+//deleting a author in author model and updatng it in book model route::  /delete/author/:isbn/:authorid
 
-booky.delete("/delete/author/:isbn/:authorid", (req, res) => {
+booky.delete("/delete/author/:isbn/:authorid", async (req, res) => {
+  const newAuthor = await AuthorModel.findOneAndDelete({
+    id: req.params.authorid,
+  });
+  const updatedbook = await BookModel.findOneAndUpdate(
+    { isbn: req.params.isbn },
+    {
+      $pull: {
+        author: req.params.authorid,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+  res.json({ msg: "deleted" });
+  /*
   database.book.forEach((bookitem) => {
     if (bookitem.isbn === req.params.isbn) {
       const newAuthor = bookitem.author.filter(
@@ -150,11 +310,24 @@ booky.delete("/delete/author/:isbn/:authorid", (req, res) => {
     author: database.author,
     msg: "deleted ",
   });
+  */
 });
 
-// deleting a publication
+// deleting a publication, and updation in book ,route:: /delete/publication/:isbn/:pubid
 
-booky.delete("/delete/publication/:isbn/:pubid", (req, res) => {
+booky.delete("/delete/publication/:isbn/:pubid", async (req, res) => {
+  const deletePub = await PubModel.findOneAndDelete({ id: req.params.pubid });
+  const updateBook = await BookModel.findOneAndUpdate(
+    { isbn: req.params.isbn },
+    {
+      publication: null,
+    },
+    { new: true }
+  );
+  res.json({ msg: "deleted" });
+  /*
+
+
   database.book.forEach((bookitem) => {
     if (bookitem.isbn === req.params.isbn) {
       bookitem.publication = 0;
@@ -173,7 +346,12 @@ booky.delete("/delete/publication/:isbn/:pubid", (req, res) => {
     publication: database.publication,
     msg: "deleted",
   });
+  */
 });
+
+booky.get("/book/openAi/Recomadations", openAi);
+
+booky.use(errorHandler);
 
 booky.listen(3000, () => {
   console.log("the server has started");
